@@ -1,8 +1,5 @@
 import sys
 import os
-from time import time
-import random
-random.seed(18796441854)
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -12,11 +9,13 @@ from PyQt5.QtWidgets import (
     QWidget,
     QMainWindow
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtWidgets import QGraphicsOpacityEffect
 
 class CalibWindow(QMainWindow):
+    closed = pyqtSignal()
+
     def __init__(self):
         super().__init__()
 
@@ -33,9 +32,9 @@ class CalibWindow(QMainWindow):
         self.msg_label.setFont(font)
         self.msg_label.setAlignment(Qt.AlignCenter)
 
-        self.finish_label = QLabel(f"Finished Trial : 0 / 0", self)
-        self.finish_label.setFont(font)
-        self.finish_label.setAlignment(Qt.AlignLeft)
+        self.mode_label = QLabel(f"", self)
+        self.mode_label.setFont(font)
+        self.mode_label.setAlignment(Qt.AlignLeft)
 
         self.curlabel_label = QLabel(f"Current Label : N/A", self)
         self.curlabel_label.setFont(font)
@@ -63,7 +62,7 @@ class CalibWindow(QMainWindow):
         layout_grid.setSpacing(75)
 
         layout_v = QVBoxLayout()
-        layout_v.addWidget(self.finish_label)
+        layout_v.addWidget(self.mode_label)
         layout_v.addWidget(self.curlabel_label)
         layout_v.addLayout(layout_grid)
 
@@ -75,7 +74,12 @@ class CalibWindow(QMainWindow):
         # Update image size when resize window
         for cls in self.file_name.keys():
             self.set_img(cls)
+    
+    def closeEvent(self, event):
+        self.closed.emit()
+        event.accept()
 
+    # set pixmap of image label
     def set_img(self, cls):
         image_path = os.path.join(self.current_dir, "icon", self.file_name[cls])
         width = int(self.height() * 0.22)  # 窗口宽度的20%
@@ -83,26 +87,34 @@ class CalibWindow(QMainWindow):
         pixmap = QPixmap(image_path).scaled(width, height)
         self.image_labels[cls].setPixmap(pixmap)
 
+    # set the class(label) to show and let others invisible
+    def set_cls_img(self, cls2show):
+        for cls, img in self.image_labels.items():
+            # set opacity of current class to 1.0 (visible)
+            if cls == cls2show:
+                opacity_effect = QGraphicsOpacityEffect(self)
+                opacity_effect.setOpacity(1.0)
+                img.setGraphicsEffect(opacity_effect)
+            # set opacity of other class to 0.0 (invisible)
+            else:
+                opacity_effect = QGraphicsOpacityEffect(self)
+                opacity_effect.setOpacity(0.0)
+                img.setGraphicsEffect(opacity_effect)
+    
+    # set current label
     def set_label(self, cur_label):
-        if cur_label == None:
+        if cur_label == None: 
             self.curlabel_label.setText("Current Label : N/A")
         else:
-            for cls, img in self.image_labels.items():
-                if cls == cur_label:
-                    opacity_effect = QGraphicsOpacityEffect(self)
-                    opacity_effect.setOpacity(1.0)
-                    # 应用透明度效果到 QLabel
-                    self.image_labels[cls].setGraphicsEffect(opacity_effect)
-                else:
-                    opacity_effect = QGraphicsOpacityEffect(self)
-                    opacity_effect.setOpacity(0.0)
-                    # 应用透明度效果到 QLabel
-                    self.image_labels[cls].setGraphicsEffect(opacity_effect)
-            
-            self.curlabel_label.setText(f"Current Label : {cur_label}")
+            self.curlabel_label.setText(f"Current Label :  {cur_label}")
 
-    def set_finished_trial(self, finished, total):
-        self.finish_label.setText(f"Finished Trial : {finished} / {total}")
+    # set current mode
+    def set_mode(self, text):
+        self.mode_label.setText(text)
+
+    # set massage
+    def set_msg(self, msg):
+        self.msg_label.setText(msg)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
