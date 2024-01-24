@@ -6,11 +6,12 @@ from PyQt5.QtWidgets import (
     QLabel,
     QVBoxLayout,
     QGridLayout,
+    QStackedLayout,
     QWidget,
     QMainWindow
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QFont
+from PyQt5.QtGui import QPixmap, QFont, QPalette, QColor
 from PyQt5.QtWidgets import QGraphicsOpacityEffect
 
 class CalibWindow(QMainWindow):
@@ -31,6 +32,7 @@ class CalibWindow(QMainWindow):
         self.msg_label = QLabel("Ready",self)
         self.msg_label.setFont(font)
         self.msg_label.setAlignment(Qt.AlignCenter)
+        self.msg_label.setStyleSheet(f"background-color: transparant;")
 
         self.mode_label = QLabel(f"", self)
         self.mode_label.setFont(font)
@@ -65,7 +67,7 @@ class CalibWindow(QMainWindow):
         layout_v.addWidget(self.mode_label)
         layout_v.addWidget(self.curlabel_label)
         layout_v.addLayout(layout_grid)
-
+ 
         self.ctr_widget = QWidget()
         self.ctr_widget.setLayout(layout_v)
         self.setCentralWidget(self.ctr_widget)
@@ -114,7 +116,11 @@ class CalibWindow(QMainWindow):
 
     # set massage
     def set_msg(self, msg):
-        self.msg_label.setText(msg)
+        self.msg_label.setText(msg)    
+
+    def set_msg_bg(self, invisible):
+        color = "transparent" if invisible else "black"
+        self.msg_label.setStyleSheet(f"background-color: {color};")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

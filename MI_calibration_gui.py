@@ -25,7 +25,7 @@ from PyQt5.QtGui import QFont
 from calibrationWindow import CalibWindow
 
 
-# main window for controlling clibration window
+# main window for controlling calibration window
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -53,6 +53,13 @@ class MainWindow(QMainWindow):
         self.button_pause.clicked.connect(self.pause)
         self.button_pause.setDisabled(True)
         l.addWidget(self.button_pause)
+
+        # button4: test
+        self.is_invisible = True
+        self.calib_win.set_msg_bg(self.is_invisible)
+        self.button_test = QPushButton("color")
+        self.button_test.clicked.connect(self.test)
+        l.addWidget(self.button_test)
 
         # separator
         separator_line = QFrame()
@@ -104,10 +111,16 @@ class MainWindow(QMainWindow):
         self.worker = WorkerThread()
         self.worker.trigger_stage.connect(self.process_stage)
         self.worker.finished.connect(self.end_trial)
-        # Init Worker thread used to process trial
+        # Init Counter thread used to process trial
         self.counter = CounterThread()
         self.counter.trigger.connect(self.calib_win.set_msg)
         self.counter.finished.connect(self.process_trial)
+        # Init Flash thread used to process SSVEP flashing
+        self.flash = FlashThread()
+        self.flash.trigger.connect(self.calib_win.set_msg_bg)
+        self.flash.finished.connect(
+            lambda: self.calib_win.set_msg_bg(True)
+        )
 
         # Init pyLSL
         info = StreamInfo(name='MotorImag-Markers', type='Markers', channel_count=1,
@@ -147,8 +160,7 @@ class MainWindow(QMainWindow):
     
     def pause(self):
         self.is_pause = True
-        self.button_pause.setDisabled(True)
-        self.button_start.setDisabled(False)  
+        self.button_pause.setDisabled(True) 
 
     def start(self):
         # send SESSION-begin if session haven't started 
@@ -172,9 +184,17 @@ class MainWindow(QMainWindow):
             return
         if self.is_pause:
             self.calib_win.set_msg("- Pause -\n\npress Start button to resume")
+            self.button_start.setDisabled(False) 
             return
         label, mode = self.trials_all[self.cur_pointer]
         self.start_trial(label, mode)
+
+    def test(self):
+        self.flash.set_parameter(
+            perform_time = 4,
+            freq = 2.0
+        )
+        self.flash.start()
 
     # ---MI Related Methods---
     # initiliza MI parameter
@@ -186,19 +206,20 @@ class MainWindow(QMainWindow):
         self.rest_time = 2
         self.rest_every = 40
         self.rest_duration = 20
-        self.MI_labels = ['LH', 'RH', 'F', 'BH']
+        #self.MI_labels = ['LH', 'RH', 'F', 'BH']
         self.trial_labels = ['LH', 'RH', 'F', 'BH', 'SSVEP']
         self.total_trial_num = self.trials_per_class * len(self.trial_labels)
 
         #隨機SSVEP頻率 (0表示不顯示有12組,其他四個頻率9組)
         SSVEP_list = np.array([0,6,4.3,7.6,10])
         SSVEP_list = np.repeat(SSVEP_list,6)
-        SSVEP_list = np.append(SSVEP_list,[0,0,0,0,0,0,0,0,0,
+        self.SSVEP_list = np.append(SSVEP_list,[0,0,0,0,0,0,0,0,0,
                                         6,6,6,6,6,6,6,6,6])
-        random.shuffle(SSVEP_list)
-        if len(SSVEP_list) != self.trials_per_class:
+        random.shuffle(self.SSVEP_list)
+        if len(self.SSVEP_list) != self.trials_per_class:
             print("SSVEP length is not match!")
-        
+        print(self.SSVEP_list)
+
         #產生實驗順序
         labels_arr = []
         for j in range(int(self.trials_per_class*len(self.trial_labels)/self.rest_every)):
@@ -240,6 +261,7 @@ class MainWindow(QMainWindow):
             msg = f"Calibration {self.finished_trial+1} / {self.total_trial_num}"
             self.calib_win.set_mode(msg)
             self.msg_label.setText(msg)
+
         self.calib_win.set_label(cls)
         self.calib_win.set_cls_img(None)
         self.calib_win.set_msg("+")
@@ -267,18 +289,36 @@ class MainWindow(QMainWindow):
         elif stage == "perform":
             # update calib window
             self.calib_win.set_cls_img(self.cur_label)
-            if self.cur_label not in self.MI_labels:
+            if self.cur_label not in self.trial_labels:
                 self.calib_win.set_msg("+")
             else:
                 self.calib_win.set_msg("")
+
+            if self.cur_label == "SSVEP":
+                freq = self.SSVEP_list[self.finished_ssvep]
+                if freq != 0:
+                    self.flash.set_parameter(
+                        perform_time = self.perform_time,
+                        freq = freq
+                    )
+                    self.flash.start()
+                else:
+                    self.calib_win.set_msg("+")
             # play sound
             self.sound['start'].play()
             # send LSL marker
             marker = ""
-            if self.cur_label == "Warm-up":
-                marker += "Warm-up"
-            marker += self.cur_label
+            if self.cur_mode == "Warm-up":
+                marker += "Warm-up "
+            if self.cur_label == "SSVEP":
+                if freq == 0:
+                    marker += "idle"
+                else:
+                    marker += "SSVEP_" + str(freq)
+            else:
+                marker += self.cur_label
             self.outlet.push_sample([marker])
+            print(marker)
         elif stage == "rest":
             # update calib window
             self.calib_win.set_cls_img(None)
@@ -286,10 +326,9 @@ class MainWindow(QMainWindow):
             # play sound
             self.sound['end'].play()
             # send LSL marker
-            self.outlet.push_sample(['trial-begin'])
+            self.outlet.push_sample(['trial-end'])
 
     def end_trial(self):
-        print("trial end")
         self.end_time = time.time()
         print(f"實際執行時間為: {self.end_time - self.start_time} 秒")
 
@@ -366,6 +405,35 @@ class CounterThread(QThread):
         for sec in range(self.count_time, 0, -1):
             self.trigger.emit(f'{self.msg}\n\n{sec}')
             time.sleep(1)
+
+        self.finished.emit()
+
+class FlashThread(QThread):
+    trigger = pyqtSignal(bool)
+    finished = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.perform_time = 3
+        self.freq = 0.0
+
+    def set_parameter(self, perform_time, freq):
+        self.perform_time = perform_time
+        self.freq = freq
+
+    def run(self):
+        start = time.time()
+        last = start
+        interval = 1/(2*self.freq)
+        visible = False
+        while 1:
+            cur = time.time()
+            if cur - start >= self.perform_time:
+                break
+            if cur - last > interval:
+                last = cur
+                self.trigger.emit(visible)
+                visible = not visible
 
         self.finished.emit()
 
